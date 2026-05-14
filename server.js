@@ -32,6 +32,7 @@ wss.on("connection", (ws) => {
       case "create": {
         let code;
         do { code = generateCode(); } while (rooms.has(code));
+        ws.displayName = msg.name || "Host";
         rooms.set(code, { clients: [ws] });
         ws.room = code;
         ws.send(JSON.stringify({ type: "created", room: code }));
@@ -45,14 +46,15 @@ wss.on("connection", (ws) => {
           ws.send(JSON.stringify({ type: "error", message: "Room not found" }));
           break;
         }
-        if (room.clients.length >= 2) {
+        if (room.clients.length >= 5) {
           ws.send(JSON.stringify({ type: "error", message: "Room full" }));
           break;
         }
+        ws.displayName = msg.name || "Guest";
         room.clients.push(ws);
         ws.room = code;
-        ws.send(JSON.stringify({ type: "joined", room: code }));
-        relay(ws, { type: "peerJoined" });
+        ws.send(JSON.stringify({ type: "joined", room: code, peers: peerList(room, ws) }));
+        relay(ws, { type: "peerJoined", peers: peerListAll(room) });
         break;
       }
 
@@ -73,6 +75,18 @@ wss.on("connection", (ws) => {
   });
 });
 
+function peerList(room, exclude) {
+  return room.clients
+    .filter((c) => c !== exclude && c.readyState === WebSocket.OPEN)
+    .map((c) => c.displayName || "?");
+}
+
+function peerListAll(room) {
+  return room.clients
+    .filter((c) => c.readyState === WebSocket.OPEN)
+    .map((c) => c.displayName || "?");
+}
+
 function relay(sender, msg) {
   if (!sender.room) return;
   const room = rooms.get(sender.room);
@@ -88,8 +102,16 @@ function removeFromRoom(ws) {
   const room = rooms.get(ws.room);
   if (!room) return;
   room.clients = room.clients.filter((c) => c !== ws);
-  relay(ws, { type: "peerLeft" });
-  if (room.clients.length === 0) rooms.delete(ws.room);
+  if (room.clients.length === 0) {
+    rooms.delete(ws.room);
+  } else {
+    const list = peerListAll(room);
+    for (const c of room.clients) {
+      if (c.readyState === WebSocket.OPEN) {
+        c.send(JSON.stringify({ type: "peerLeft", peers: list }));
+      }
+    }
+  }
   ws.room = null;
 }
 
