@@ -30,6 +30,7 @@ const httpServer = http.createServer((req, res) => {
 const wss = new WebSocket.Server({ server: httpServer });
 
 wss.on("connection", (ws) => {
+  console.log("client connected");
   ws.id = generateClientId();
   ws.room = null;
   ws.isAlive = true;
@@ -47,7 +48,7 @@ wss.on("connection", (ws) => {
     } catch {
       return;
     }
-
+console.log("message received", msg.type, msg.name || msg.room || "");
     switch (msg.type) {
       case "browse": {
         ws.displayName = msg.name || "Guest";
